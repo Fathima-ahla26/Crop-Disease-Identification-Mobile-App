@@ -1,0 +1,54 @@
+CREATE DATABASE IF NOT EXISTS cropcare CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE cropcare;
+CREATE TABLE IF NOT EXISTS users (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ full_name VARCHAR(120) NOT NULL,
+ email VARCHAR(190) NOT NULL UNIQUE,
+ password_hash VARCHAR(255) NOT NULL,
+ role ENUM('farmer','officer','researcher','admin') NOT NULL DEFAULT 'farmer',
+ district VARCHAR(100) NULL,
+ preferred_language ENUM('en','si','ta') NOT NULL DEFAULT 'en',
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS diagnoses (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT UNSIGNED NOT NULL,
+ crop VARCHAR(70) NOT NULL,
+ disease VARCHAR(160) NOT NULL,
+ confidence DECIMAL(5,4) NULL,
+ symptoms JSON NULL,
+ recommendations JSON NULL,
+ image_data MEDIUMTEXT NULL,
+ model_name VARCHAR(100) NULL,
+ status ENUM('pending','resolved') NOT NULL DEFAULT 'pending',
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+ INDEX (user_id,created_at)
+);
+CREATE TABLE IF NOT EXISTS expert_cases (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ diagnosis_id BIGINT UNSIGNED NOT NULL,
+ farmer_id BIGINT UNSIGNED NOT NULL,
+ officer_id BIGINT UNSIGNED NULL,
+ notes TEXT NULL,
+ location VARCHAR(190) NOT NULL,
+ office VARCHAR(190) NULL,
+ urgency ENUM('low','moderate','high') NOT NULL DEFAULT 'moderate',
+ status ENUM('submitted','reviewing','reviewed') NOT NULL DEFAULT 'submitted',
+ archived TINYINT(1) NOT NULL DEFAULT 0,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (diagnosis_id) REFERENCES diagnoses(id) ON DELETE CASCADE,
+ FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE,
+ FOREIGN KEY (officer_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS expert_reviews (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ case_id BIGINT UNSIGNED NOT NULL UNIQUE,
+ officer_id BIGINT UNSIGNED NOT NULL,
+ confirmed_disease VARCHAR(160) NOT NULL,
+ treatment TEXT NOT NULL,
+ instructions TEXT NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (case_id) REFERENCES expert_cases(id) ON DELETE CASCADE,
+ FOREIGN KEY (officer_id) REFERENCES users(id) ON DELETE CASCADE
+);

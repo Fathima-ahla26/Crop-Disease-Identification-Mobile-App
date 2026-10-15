@@ -1,0 +1,601 @@
+import { useRouter } from "expo-router";
+import { useState } from "react";
+import {
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+export default function LoginScreen() {
+  // Secure database-based login is available at /secure-auth.
+
+  const router = useRouter();
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  // Default farmer account (Default නම Farmer Kamal)
+  const [registeredFarmer, setRegisteredFarmer] = useState({
+    name: "Kamal",
+    emailOrPhone: "farmer@cropcare.com",
+    password: "crop123",
+  });
+
+  // Form states
+  const [name, setName] = useState("");
+  const [emailOrPhone, setEmailOrPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  // Forgot password modal states
+  const [forgotModalVisible, setForgotModalVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetStatus, setResetStatus] = useState("");
+
+  const handleAuth = () => {
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (isSignUp) {
+      if (!name.trim()) {
+        setErrorMessage("Please enter your full name.");
+        return;
+      }
+      if (!emailOrPhone.trim()) {
+        setErrorMessage("Please enter your email or phone number.");
+        return;
+      }
+      if (!password || password.length < 4) {
+        setErrorMessage("Password must be at least 4 characters long.");
+        return;
+      }
+
+      // අලුත් ගොවියාගේ විස්තර සහ නම save කරගැනීම
+      setRegisteredFarmer({
+        name: name.trim(),
+        emailOrPhone: emailOrPhone.trim(),
+        password: password,
+      });
+
+      setSuccessMessage(
+        "Farmer account registered successfully! Please log in.",
+      );
+      setIsSignUp(false);
+      setPassword("");
+      return;
+    }
+
+    if (!emailOrPhone.trim()) {
+      setErrorMessage("Please enter your email or phone number.");
+      return;
+    }
+    if (!password) {
+      setErrorMessage("Please enter your password.");
+      return;
+    }
+
+    // Credentials පරීක්ෂාව
+    const isIdentifierCorrect =
+      emailOrPhone.trim().toLowerCase() ===
+      registeredFarmer.emailOrPhone.toLowerCase();
+    const isPasswordCorrect = password === registeredFarmer.password;
+
+    if (!isIdentifierCorrect || !isPasswordCorrect) {
+      setErrorMessage(
+        "Invalid credentials. Please enter your correct registered details.",
+      );
+      return;
+    }
+
+    // ලියාපදිංචි වූ නම Home screen එකට යැවීම
+    router.replace({
+      pathname: "/home",
+      params: { farmerName: registeredFarmer.name },
+    } as any);
+  };
+
+  const handlePasswordReset = () => {
+    if (!resetEmail.trim()) {
+      setResetStatus("Please enter your registered email address.");
+      return;
+    }
+    setResetStatus("Password reset link has been sent to your email.");
+    setTimeout(() => {
+      setForgotModalVisible(false);
+      setResetEmail("");
+      setResetStatus("");
+      setSuccessMessage(
+        "Password reset instructions sent. Please check your inbox.",
+      );
+    }, 1800);
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.topCurveBackground}>
+        <View style={styles.decorCircleLarge} />
+        <View style={styles.decorCircleSmall} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.brandHeader}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoEmoji}>🌱</Text>
+          </View>
+          <Text style={styles.brandName}>CropCare</Text>
+        </View>
+
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabBtn, !isSignUp && styles.tabActive]}
+            onPress={() => {
+              setIsSignUp(false);
+              setErrorMessage("");
+              setSuccessMessage("");
+            }}
+          >
+            <Text style={[styles.tabText, !isSignUp && styles.tabTextActive]}>
+              Login
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabBtn, isSignUp && styles.tabActive]}
+            onPress={() => {
+              setIsSignUp(true);
+              setErrorMessage("");
+              setSuccessMessage("");
+            }}
+          >
+            <Text style={[styles.tabText, isSignUp && styles.tabTextActive]}>
+              Sign Up
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.title}>
+          {isSignUp ? "Create Farmer Account" : "Farmer Login"}
+        </Text>
+        <Text style={styles.subtitle}>
+          {isSignUp
+            ? "Sign up to track crops, analyze leaves, and consult officers."
+            : "Enter your registered details to access your farm advisory."}
+        </Text>
+
+        {successMessage ? (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>✅ {successMessage}</Text>
+          </View>
+        ) : null}
+
+        {errorMessage ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>⚠️ {errorMessage}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.form}>
+          {isSignUp && (
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>👤</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Full Name (e.g. Kamal Perera)"
+                placeholderTextColor="#9CA3AF"
+                value={name}
+                onChangeText={setName}
+              />
+            </View>
+          )}
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputIcon}>✉️</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Email or Phone Number"
+              placeholderTextColor="#9CA3AF"
+              value={emailOrPhone}
+              onChangeText={setEmailOrPhone}
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputIcon}>🔒</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="#9CA3AF"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+          </View>
+
+          {!isSignUp && (
+            <TouchableOpacity
+              style={styles.forgotBtn}
+              onPress={() => {
+                setForgotModalVisible(true);
+                setResetStatus("");
+              }}
+            >
+              <Text style={styles.forgotText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.authBtn}
+            onPress={handleAuth}
+            activeOpacity={0.88}
+          >
+            <Text style={styles.authBtnText}>
+              {isSignUp ? "Register Account" : "Login"}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.orText}>or continue with</Text>
+
+          <TouchableOpacity
+            style={styles.googleBtn}
+            onPress={() =>
+              router.replace({
+                pathname: "/home",
+                params: { farmerName: "Kamal" },
+              } as any)
+            }
+            activeOpacity={0.85}
+          >
+            <Text style={styles.googleIcon}>G</Text>
+            <Text style={styles.googleBtnText}>Continue with Google</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Forgot Password Modal */}
+      <Modal visible={forgotModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter your registered email address to receive password reset
+              instructions.
+            </Text>
+
+            {resetStatus ? (
+              <Text
+                style={[
+                  styles.modalStatusText,
+                  resetStatus.includes("sent")
+                    ? styles.textSuccess
+                    : styles.textDanger,
+                ]}
+              >
+                {resetStatus}
+              </Text>
+            ) : null}
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>✉️</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Registered Email"
+                placeholderTextColor="#9CA3AF"
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setForgotModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handlePasswordReset}
+              >
+                <Text style={styles.modalSubmitText}>Send Link</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F7FAF7",
+    position: "relative",
+    overflow: "hidden",
+  },
+  topCurveBackground: {
+    position: "absolute",
+    top: -90,
+    width: 440,
+    height: 250,
+    backgroundColor: "#E8F5EB",
+    borderRadius: 220,
+    zIndex: 0,
+  },
+  decorCircleLarge: {
+    position: "absolute",
+    top: 50,
+    right: 40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(23, 107, 58, 0.08)",
+  },
+  decorCircleSmall: {
+    position: "absolute",
+    bottom: 20,
+    left: 40,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(23, 107, 58, 0.06)",
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 32,
+    zIndex: 1,
+  },
+  brandHeader: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  logoCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#CBE7D4",
+    shadowColor: "#176B3A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 8,
+  },
+  logoEmoji: {
+    fontSize: 34,
+  },
+  brandName: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#13582F",
+    letterSpacing: 0.5,
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#E5EBE6",
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 20,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: "center",
+    borderRadius: 10,
+  },
+  tabActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 13,
+    color: "#65776B",
+    fontWeight: "600",
+  },
+  tabTextActive: {
+    color: "#13582F",
+    fontWeight: "800",
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: "#55665B",
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  successBox: {
+    backgroundColor: "#DCFCE7",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 14,
+  },
+  successText: {
+    color: "#166534",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  errorBox: {
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 14,
+  },
+  errorText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  form: {
+    width: "100%",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D3DFD6",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    marginBottom: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
+    fontSize: 16,
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: "#1F2937",
+  },
+  forgotBtn: {
+    alignSelf: "flex-end",
+    marginBottom: 16,
+  },
+  forgotText: {
+    fontSize: 12,
+    color: "#176B3A",
+    fontWeight: "700",
+  },
+  authBtn: {
+    backgroundColor: "#176B3A",
+    height: 50,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+    shadowColor: "#176B3A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  authBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  orText: {
+    textAlign: "center",
+    color: "#8A9A8F",
+    fontSize: 12,
+    marginBottom: 14,
+  },
+  googleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D3DFD6",
+    height: 48,
+    borderRadius: 12,
+  },
+  googleIcon: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#EA4335",
+    marginRight: 8,
+  },
+  googleBtnText: {
+    color: "#374151",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    width: "100%",
+    maxWidth: 360,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#13582F",
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: "#65776B",
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  modalStatusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  textSuccess: {
+    color: "#166534",
+  },
+  textDanger: {
+    color: "#B91C1C",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 8,
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  modalCancelText: {
+    color: "#6B7280",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  modalSubmitBtn: {
+    backgroundColor: "#176B3A",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  modalSubmitText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+});
