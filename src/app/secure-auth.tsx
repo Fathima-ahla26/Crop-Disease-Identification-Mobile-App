@@ -83,8 +83,11 @@ export default function SecureAuth() {
 
         if (session.user.role === "researcher") {
           router.replace("/researcher-dashboard");
-        } else if (session.user.role === "officer" || session.user.role === "admin") {
-          router.replace("/case-board");
+        } else if (
+          session.user.role === "officer" ||
+          session.user.role === "admin"
+        ) {
+          router.replace("/officer-dashboard");
         } else {
           router.replace("/home");
         }
