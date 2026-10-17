@@ -660,6 +660,47 @@ app.get(
   }),
 );
 
+// Load the complete evidence for one case without downloading every case photo.
+app.get("/api/cases/:id", guard, wrap(async (req, res) => {
+  const id = z.coerce.number().int().positive().parse(req.params.id);
+  const officer = ["officer", "admin"].includes(req.auth.role);
+  if (!officer && req.auth.role !== "farmer")
+    return res.status(403).json({ error: "Case access required" });
+  const [[record]] = await db.execute(
+    `SELECT c.*, d.crop, d.disease, d.confidence, d.image_data,
+      d.symptoms, d.recommendations, u.full_name farmer_name,
+      r.confirmed_disease, r.treatment, r.instructions,
+      reviewer.full_name officer_name
+     FROM expert_cases c
+     JOIN diagnoses d ON d.id=c.diagnosis_id
+     JOIN users u ON u.id=c.farmer_id
+     LEFT JOIN expert_reviews r ON r.case_id=c.id
+     LEFT JOIN users reviewer ON reviewer.id=r.officer_id
+     WHERE c.id=? ${officer ? "" : "AND c.farmer_id=?"}`,
+    officer ? [id] : [id, req.auth.id],
+  );
+  if (!record) return res.status(404).json({ error: "Case not found" });
+  res.json(record);
+}));
+
+// An officer can obtain a second AI assessment of the saved photo.
+// This does not alter the original diagnosis or the officer's review.
+app.post("/api/cases/:id/reanalyze", guard, wrap(async (req, res) => {
+  if (!["officer", "admin"].includes(req.auth.role))
+    return res.status(403).json({ error: "Officer access required" });
+  const id = z.coerce.number().int().positive().parse(req.params.id);
+  const [[record]] = await db.execute(
+    `SELECT d.crop, d.image_data FROM expert_cases c
+     JOIN diagnoses d ON d.id=c.diagnosis_id WHERE c.id=?`, [id],
+  );
+  if (!record) return res.status(404).json({ error: "Case not found" });
+  const photo = record.image_data?.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!photo) return res.status(422).json({ error: "This case has no supported saved photo to analyze." });
+  const input = imageSchema.parse({crop:record.crop, mimeType:photo[1], imageBase64:photo[2].replace(/\s/g, "")});
+  const result = await assessLeaf(input);
+  res.json({...result, analyzed_at:new Date().toISOString()});
+}));
+
 // OFFICER REVIEWS
 
 app.patch(
@@ -673,9 +714,9 @@ app.patch(
     }
 
     const a = obj({
-      confirmedDisease: z.string().min(2).max(160),
-      treatment: z.string().min(5).max(4000),
-      instructions: z.string().min(5).max(4000),
+      confirmedDisease: z.string().trim().min(2).max(160),
+      treatment: z.string().trim().min(5).max(4000),
+      instructions: z.string().trim().min(5).max(4000),
     }).parse(req.body);
 
     const conn = await db.getConnection();
@@ -727,6 +768,35 @@ app.patch(
     }
   }),
 );
+
+// Remove only feedback; preserve the farmer's submitted case and scan.
+app.delete("/api/cases/:id/review", guard, wrap(async (req, res) => {
+  if (!["officer", "admin"].includes(req.auth.role))
+    return res.status(403).json({ error: "Officer access required" });
+  const id = z.coerce.number().int().positive().parse(req.params.id);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[record]] = await conn.execute("SELECT id FROM expert_cases WHERE id=? FOR UPDATE", [id]);
+    if (!record) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Case not found" });
+    }
+    const [deleted] = await conn.execute("DELETE FROM expert_reviews WHERE case_id=?", [id]);
+    if (!deleted.affectedRows) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Feedback already removed. Reopen the case to refresh." });
+    }
+    await conn.execute("UPDATE expert_cases SET status='submitted',officer_id=NULL WHERE id=?", [id]);
+    await conn.commit();
+    res.json({ ok: true, status: "submitted" });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}));
 
 // Officer case archive is reversible and keeps records for auditing.
 app.patch(
@@ -800,7 +870,7 @@ app.use((err, req, res, next) => {
 
   if (["ER_NO_SUCH_TABLE", "ER_BAD_DB_ERROR"].includes(err.code)) {
     return res.status(503).json({
-      error: "Database not initialized. Run sql/schema.sql",
+      error: "Database not initialized. Run npm run db:init from the backend folder.",
     });
   }
 

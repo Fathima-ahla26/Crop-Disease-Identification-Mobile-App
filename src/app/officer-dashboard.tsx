@@ -36,8 +36,8 @@ export default function OfficerDashboard() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      const load = async () => {
-        setBusy(true);
+      const load = async (background = false) => {
+        if (!background) setBusy(true);
         setError("");
         try {
           const user = await loadProfile();
@@ -62,8 +62,11 @@ export default function OfficerDashboard() {
         }
       };
       void load();
+      // Keep farmer submissions visible while the officer stays on this screen.
+      const timer = setInterval(() => { void load(true); }, 15000);
       return () => {
         active = false;
+        clearInterval(timer);
       };
     }, [router]),
   );

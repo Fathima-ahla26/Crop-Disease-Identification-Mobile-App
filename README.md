@@ -9,6 +9,8 @@ IT3060 Milestone 03 implementation extension of the uploaded group's Expo/React 
 - Internet + a compatible image-vision API key **only if you want actual AI analysis**
 
 ## 2. Create the database using MySQL Workbench
+Alternatively, after configuring `backend/.env` and installing backend dependencies, run `cd backend` then `npm run db:init`. This creates the configured database and missing tables without deleting existing data. MySQL must be running and the configured user must have permission to create the database/tables.
+
 1. Open Workbench and connect to your MySQL server.
 2. Open `backend/sql/schema.sql` and execute the complete file using the lightning button.
 3. Confirm the `cropcare` schema and `users`, `diagnoses`, `expert_cases`, `expert_reviews` tables exist.
