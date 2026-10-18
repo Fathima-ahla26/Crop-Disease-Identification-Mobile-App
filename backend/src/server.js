@@ -276,7 +276,7 @@ async function assessLeaf(a) {
                 role: "system",
 
                 content:
-                  "You are an agricultural photo-screening assistant, not a certified diagnostician. Return ONLY JSON with keys disease, confidence, symptoms, recommendations. disease is a possible disease name or Uncertain; confidence is a number from 0 to 1 or null and is only an uncalibrated AI estimate; symptoms and recommendations are arrays of short strings. Do not invent what is not visible. If unsure use Uncertain and null. Never prescribe pesticide dosages.",
+                  "You are an agricultural photo-screening assistant, not a certified diagnostician. Return ONLY JSON with keys crop, disease, confidence, symptoms, recommendations, treatment, instructions. crop is the likely crop name supported by the photo, or Unspecified if it cannot be identified. Do not simply repeat an uncertain crop hint. disease is a possible disease name or Uncertain; confidence is a number from 0 to 1 or null and is only an uncalibrated AI estimate; symptoms and recommendations are arrays of short strings. treatment is a short plain-language string of cautious management suggestions for an officer to review. instructions is a separate short plain-language string with practical farmer monitoring, prevention and follow-up steps. If the condition is uncertain, both strings must acknowledge this and focus on assessment and low-risk care rather than disease-specific treatment. Do not invent what is not visible. If unsure use Uncertain and null. Never prescribe pesticide dosages.",
               },
 
               {
@@ -351,10 +351,13 @@ async function assessLeaf(a) {
 
       result = z
         .object({
+          crop: z.string().trim().min(2).max(70).optional().default('Unspecified'),
           disease: z.string().min(1).max(160),
           confidence: z.number().min(0).max(1).nullable(),
           symptoms: z.array(z.string()).max(8),
           recommendations: z.array(z.string()).max(8),
+          treatment: z.string().trim().min(5).max(4000),
+          instructions: z.string().trim().min(5).max(4000),
         })
         .parse(result);
     } catch (e) {
@@ -383,6 +386,7 @@ app.post(
     const a = imageSchema.parse(req.body);
 
     const r = await assessLeaf(a);
+    const identifiedCrop = r.crop !== 'Unspecified' ? r.crop : a.crop;
 
     const [dbResult] = await db.execute(
       `INSERT INTO diagnoses
@@ -391,7 +395,7 @@ app.post(
        VALUES (?,?,?,?,?,?,?,?)`,
       [
         req.auth.id,
-        a.crop,
+        identifiedCrop,
         r.disease,
         r.confidence,
         JSON.stringify(r.symptoms),
@@ -403,8 +407,8 @@ app.post(
 
     res.status(201).json({
       id: dbResult.insertId,
-      crop: a.crop,
       ...r,
+      crop: identifiedCrop,
       status: "pending",
     });
   }),
@@ -634,6 +638,7 @@ app.get(
         .status(403)
         .json({ error: "Research accounts access aggregate analytics only" });
     const officer = ["officer", "admin"].includes(req.auth.role);
+    const history = req.query.view === "reviewed";
 
     const [rows] = await db.execute(
       `SELECT
@@ -649,10 +654,11 @@ app.get(
        JOIN diagnoses d ON d.id=c.diagnosis_id
        JOIN users u ON u.id=c.farmer_id
        LEFT JOIN expert_reviews r ON r.case_id=c.id
-       ${officer ? "WHERE c.archived=0" : "WHERE c.farmer_id=? AND c.archived=0"}
+       WHERE ${officer ? "1=1" : "c.farmer_id=?"}
+       AND ${history ? "r.id IS NOT NULL" : "c.archived=0"}
        ORDER BY
-       FIELD(c.status,'submitted','reviewing','reviewed'),
-       c.id DESC LIMIT 100`,
+       ${history ? "r.created_at DESC," : "FIELD(c.status,'submitted','reviewing','reviewed'),"}
+       c.id DESC ${history ? "" : "LIMIT 100"}`,
       officer ? [] : [req.auth.id],
     );
 
@@ -680,6 +686,10 @@ app.get("/api/cases/:id", guard, wrap(async (req, res) => {
     officer ? [id] : [id, req.auth.id],
   );
   if (!record) return res.status(404).json({ error: "Case not found" });
+  if (officer) {
+    const [[assessment]] = await db.execute('SELECT result FROM case_assessments WHERE case_id=?', [id]);
+    record.assessment = assessment ? (typeof assessment.result === 'string' ? JSON.parse(assessment.result) : assessment.result) : null;
+  }
   res.json(record);
 }));
 
@@ -689,6 +699,7 @@ app.post("/api/cases/:id/reanalyze", guard, wrap(async (req, res) => {
   if (!["officer", "admin"].includes(req.auth.role))
     return res.status(403).json({ error: "Officer access required" });
   const id = z.coerce.number().int().positive().parse(req.params.id);
+  const hints = z.object({crop:z.string().trim().min(2).max(70).optional()}).parse(req.body || {});
   const [[record]] = await db.execute(
     `SELECT d.crop, d.image_data FROM expert_cases c
      JOIN diagnoses d ON d.id=c.diagnosis_id WHERE c.id=?`, [id],
@@ -696,9 +707,12 @@ app.post("/api/cases/:id/reanalyze", guard, wrap(async (req, res) => {
   if (!record) return res.status(404).json({ error: "Case not found" });
   const photo = record.image_data?.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/);
   if (!photo) return res.status(422).json({ error: "This case has no supported saved photo to analyze." });
-  const input = imageSchema.parse({crop:record.crop, mimeType:photo[1], imageBase64:photo[2].replace(/\s/g, "")});
+  const input = imageSchema.parse({crop:hints.crop || record.crop, mimeType:photo[1], imageBase64:photo[2].replace(/\s/g, "")});
   const result = await assessLeaf(input);
-  res.json({...result, analyzed_at:new Date().toISOString()});
+  const assessment = {...result, analyzed_at:new Date().toISOString()};
+  await db.execute(`INSERT INTO case_assessments (case_id,result) VALUES (?,?)
+    ON DUPLICATE KEY UPDATE result=VALUES(result)`, [id, JSON.stringify(assessment)]);
+  res.json(assessment);
 }));
 
 // OFFICER REVIEWS
@@ -715,6 +729,7 @@ app.patch(
 
     const a = obj({
       confirmedDisease: z.string().trim().min(2).max(160),
+      crop: z.string().trim().min(2).max(70).optional(),
       treatment: z.string().trim().min(5).max(4000),
       instructions: z.string().trim().min(5).max(4000),
     }).parse(req.body);
@@ -725,7 +740,7 @@ app.patch(
       await conn.beginTransaction();
 
       const [[c]] = await conn.execute(
-        `SELECT id FROM expert_cases
+        `SELECT id, diagnosis_id FROM expert_cases
          WHERE id=? FOR UPDATE`,
         [req.params.id],
       );
@@ -756,6 +771,10 @@ app.patch(
          WHERE id=?`,
         [req.auth.id, c.id],
       );
+
+      if (a.crop) {
+        await conn.execute('UPDATE diagnoses SET crop=? WHERE id=?', [a.crop, c.diagnosis_id]);
+      }
 
       await conn.commit();
 
@@ -817,6 +836,29 @@ app.patch(
 
 // AGRICULTURAL ANALYTICS
 
+app.get('/api/analytics/records', guard, wrap(async (req, res) => {
+  if (!['officer', 'admin'].includes(req.auth.role))
+    return res.status(403).json({ error: 'Officer access required' });
+  const kind = z.enum(['scans', 'cases', 'high', 'reviewed', 'pending']).parse(req.query.kind);
+  const days = z.coerce.number().refine(n => [0, 7, 30, 90].includes(n)).parse(req.query.days ?? 0);
+  const since = days ? new Date(Date.now() - days * 86400000) : new Date(0);
+  if (kind === 'scans') {
+    const [rows] = await db.query(`SELECT d.id, d.crop, d.disease, d.status,
+      d.created_at, u.full_name farmer_name FROM diagnoses d
+      JOIN users u ON u.id=d.user_id WHERE d.created_at >= ? ORDER BY d.created_at DESC, d.id DESC`, [since]);
+    return res.json(rows);
+  }
+  const [rows] = await db.query(`SELECT c.id, d.crop, d.disease, c.status,
+    c.urgency, c.location, c.archived, c.created_at, u.full_name farmer_name,
+    r.confirmed_disease FROM expert_cases c
+    JOIN diagnoses d ON d.id=c.diagnosis_id JOIN users u ON u.id=c.farmer_id
+    LEFT JOIN expert_reviews r ON r.case_id=c.id
+    WHERE c.created_at >= ?
+    ${kind === 'high' ? "AND c.urgency='high'" : kind === 'reviewed' ? "AND c.status='reviewed'" : kind === 'pending' ? "AND c.status<>'reviewed'" : ''}
+    ORDER BY c.created_at DESC, c.id DESC`, [since]);
+  res.json(rows);
+}));
+
 app.get(
   "/api/analytics",
   guard,
@@ -825,24 +867,50 @@ app.get(
       return res.status(403).json({ error: "Analytics access required" });
     }
 
+    const days = req.query.days === undefined ? 0 : Number(req.query.days);
+    if (![0, 7, 30, 90].includes(days)) {
+      return res.status(400).json({ error: "Choose 7, 30, 90 days or all time" });
+    }
+    const since = days ? new Date(Date.now() - days * 86400000) : new Date(0);
     const [[totals]] = await db.query(
       `SELECT
-       (SELECT COUNT(*) FROM diagnoses) total_scans,
-       (SELECT COUNT(*) FROM expert_cases) cases,
+       (SELECT COUNT(*) FROM diagnoses WHERE created_at >= ?) total_scans,
+       (SELECT COUNT(*) FROM expert_cases WHERE created_at >= ?) cases,
        (SELECT COUNT(*) FROM expert_cases
-        WHERE urgency='high') high_risk`,
+        WHERE urgency='high' AND created_at >= ?) high_risk`,
+      [since, since, since],
     );
 
     const [diseases] = await db.query(
       `SELECT disease,COUNT(*) count
        FROM diagnoses
+       WHERE created_at >= ?
        GROUP BY disease
-       ORDER BY count DESC LIMIT 5`,
+       ORDER BY count DESC, disease`,
+      [since],
+    );
+
+    const [crops] = await db.query(
+      `SELECT crop, COUNT(*) count FROM diagnoses WHERE created_at >= ?
+       GROUP BY crop ORDER BY count DESC, crop`, [since],
+    );
+    const [districts] = await db.query(
+      `SELECT COALESCE(NULLIF(TRIM(u.district), ''), 'Not recorded') district,
+       COUNT(*) count FROM diagnoses d JOIN users u ON u.id=d.user_id
+       WHERE d.created_at >= ? GROUP BY district ORDER BY count DESC, district`, [since],
+    );
+    const [statuses] = await db.query(
+      `SELECT status, COUNT(*) count FROM expert_cases WHERE created_at >= ?
+       GROUP BY status`, [since],
     );
 
     res.json({
       ...totals,
       diseases,
+      crops,
+      districts,
+      statuses,
+      generated_at: new Date().toISOString(),
     });
   }),
 );

@@ -20,6 +20,9 @@ type ExpertCase = {
   urgency?: string;
   status?: string;
   created_at?: string;
+  confirmed_disease?: string;
+  treatment?: string;
+  archived?: number;
 };
 
 type Filter = "all" | "high" | "moderate";
@@ -30,6 +33,7 @@ export default function OfficerDashboard() {
   const [cases, setCases] = useState<ExpertCase[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [history, setHistory] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
 
@@ -53,7 +57,7 @@ export default function OfficerDashboard() {
             return;
           }
           setProfile(user);
-          const data = await api<ExpertCase[]>("/cases");
+          const data = await api<ExpertCase[]>(history ? "/cases?view=reviewed" : "/cases");
           if (active) setCases(Array.isArray(data) ? data : []);
         } catch (e: any) {
           if (active) setError(e?.message || "Unable to load expert cases.");
@@ -68,14 +72,14 @@ export default function OfficerDashboard() {
         active = false;
         clearInterval(timer);
       };
-    }, [router]),
+    }, [router, history]),
   );
 
   const visible = useMemo(
     () =>
       cases.filter((c) => {
         const matchesText =
-          `${c.farmer_name || ""} ${c.crop || ""} ${c.disease || ""} ${c.location || ""}`
+          `${c.farmer_name || ""} ${c.crop || ""} ${c.disease || ""} ${c.confirmed_disease || ""} ${c.location || ""}`
             .toLowerCase()
             .includes(search.trim().toLowerCase());
         const matchesUrgency =
@@ -96,7 +100,7 @@ export default function OfficerDashboard() {
     <View style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.brand}>🌿 CropCare / Agricultural Officer</Text>
-        <Text style={styles.title}>Pending Case Reviews</Text>
+        <Text style={styles.title}>{history ? "Review history" : "Case reviews"}</Text>
         <Text style={styles.subtitle}>
           Welcome, {profile?.name || "Officer"}
         </Text>
@@ -105,7 +109,11 @@ export default function OfficerDashboard() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.summaryRow}>
+        <View style={styles.filters}>
+          {[false, true].map(value => <TouchableOpacity key={String(value)} accessibilityRole="button" accessibilityState={{selected: history === value}} style={[styles.filter, history === value && styles.selectedFilter]} onPress={() => { setHistory(value); setCases([]); setBusy(true); }}><Text style={[styles.filterText, history === value && styles.selectedFilterText]}>{value ? 'Review history' : 'Current cases'}</Text></TouchableOpacity>)}
+        </View>
+        {history && <Text style={styles.meta}>Saved expert reviews, including archived cases. Open a case to see treatment and instructions.</Text>}
+        {!history && <View style={styles.summaryRow}>
           <View style={styles.summary}>
             <Text style={styles.summaryNumber}>{activeCases}</Text>
             <Text style={styles.summaryCaption}>Awaiting review</Text>
@@ -114,7 +122,7 @@ export default function OfficerDashboard() {
             <Text style={styles.summaryNumber}>{highUrgency}</Text>
             <Text style={styles.summaryCaption}>High urgency</Text>
           </View>
-        </View>
+        </View>}
         <TextInput
           style={styles.search}
           value={search}
@@ -193,6 +201,9 @@ export default function OfficerDashboard() {
                   ? new Date(c.created_at).toLocaleDateString()
                   : ""}
               </Text>
+              {!!c.confirmed_disease && <Text style={styles.crop}>Expert assessment: {c.confirmed_disease}</Text>}
+              {!!c.treatment && <Text style={styles.meta} numberOfLines={2}>{c.treatment}</Text>}
+              {!!c.archived && <Text style={styles.meta}>Archived case · Saved review</Text>}
               <TouchableOpacity
                 style={styles.reviewButton}
                 onPress={() =>

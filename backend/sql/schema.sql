@@ -52,3 +52,8 @@ CREATE TABLE IF NOT EXISTS expert_reviews (
  FOREIGN KEY (case_id) REFERENCES expert_cases(id) ON DELETE CASCADE,
  FOREIGN KEY (officer_id) REFERENCES users(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS case_assessments (
+ case_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ result JSON NOT NULL,
+ FOREIGN KEY (case_id) REFERENCES expert_cases(id) ON DELETE CASCADE
+);
