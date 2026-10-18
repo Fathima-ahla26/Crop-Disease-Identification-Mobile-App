@@ -1,1 +1,502 @@
-#homepagecode;
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+    ActivityIndicator,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { api, loadProfile, Profile, signOut } from "../lib/api";
+const C = {
+  green: "#155C38",
+  mint: "#E8F5E9",
+  cream: "#F7F9F4",
+  muted: "#728379",
+  ink: "#183F2B",
+  border: "#E3EBE3",
+};
+const copy = {
+  en: {
+    greeting: "Grow healthier crops",
+    intro: "Identify leaf problems early and get trusted support.",
+    scan: "Scan a plant",
+    scanSub: "Take a leaf photo or upload one",
+    actions: "Explore services",
+    saved: "Diagnosis history",
+    savedSub: "Your previous plant checks",
+    expert: "Expert support",
+    expertSub: "Track officer advice",
+    guide: "Photo guidelines",
+    guideSub: "Get a clearer result",
+    recent: "Latest diagnosis",
+    none: "No scans yet. Start with a clear leaf photo.",
+    view: "View all records",
+    disclaimer:
+      "AI results are preliminary. Confirm serious cases with an agricultural officer.",
+  },
+  si: {
+    greeting: "නිරෝගී වගාවක් ගොඩනගමු",
+    intro: "පත්‍ර රෝග කලින් හඳුනාගෙන විශ්වාසදායී සහය ලබාගන්න.",
+    scan: "ශාකය පරීක්ෂා කරන්න",
+    scanSub: "ඡායාරූපයක් ගන්න හෝ එක් කරන්න",
+    actions: "සේවාවන්",
+    saved: "සුරැකි පරීක්ෂණ",
+    savedSub: "පැරණි පරීක්ෂණ බලන්න",
+    expert: "විශේෂඥ සහය",
+    expertSub: "නිලධාරී උපදෙස් බලන්න",
+    guide: "ඡායාරූප උපදෙස්",
+    guideSub: "පැහැදිලි ඡායාරූප ගන්න",
+    recent: "අවසන් පරීක්ෂණය",
+    none: "තවම පරීක්ෂණ නැහැ. පත්‍රයක ඡායාරූපයක් ගන්න.",
+    view: "සියලු වාර්තා",
+    disclaimer:
+      "AI ප්‍රතිඵල මූලික අනුමානයකි. වැදගත් අවස්ථාවල කෘෂිකර්ම නිලධාරියෙකුගෙන් විමසන්න.",
+  },
+};
+export default function Home() {
+  const router = useRouter();
+  const [lang, setLang] = useState<"en" | "si">("en");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [recent, setRecent] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const t = copy[lang];
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        try {
+          const u = await loadProfile();
+          if (!u) {
+            router.replace("/secure-auth");
+            return;
+          }
+          if (u.role !== "farmer") {
+            router.replace(
+              u.role === "researcher" ? "/researcher-dashboard" : "/case-board",
+            );
+            return;
+          }
+          const rows = await api<any[]>("/diagnoses");
+          if (active) {
+            setProfile(u);
+            setRecent(rows);
+            if (u.preferred_language === "si" || u.preferred_language === "en")
+              setLang(u.preferred_language);
+            setError("");
+          }
+        } catch (e: any) {
+          if (active) setError(e.message);
+        } finally {
+          if (active) setLoading(false);
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [router]),
+  );
+  const nav = (route: string) => router.push(route as any);
+  return (
+    <View style={s.root}>
+      <View style={s.header}>
+        <View style={s.top}>
+          <View>
+            <Text style={s.brand}>✳ CropCare</Text>
+            <Text style={s.role}>PLANT HEALTH / FARMER</Text>
+          </View>
+          <TouchableOpacity
+            style={s.avatar}
+            onPress={async () => {
+              await signOut();
+              router.replace("/secure-auth");
+            }}
+            accessibilityLabel="Log out"
+          >
+            <Text style={s.avatarText}>
+              {(profile?.name || "F").slice(0, 1).toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <View style={s.lang}>
+          <TouchableOpacity
+            style={[s.langPill, lang === "en" && s.langActive]}
+            onPress={async () => {
+              try {
+                await api("/me/language", {
+                  method: "PATCH",
+                  body: JSON.stringify({ language: "en" }),
+                });
+                setLang("en");
+              } catch (e: any) {
+                setError(e.message);
+              }
+            }}
+          >
+            <Text style={[s.langText, lang === "en" && s.langActiveText]}>
+              English
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.langPill, lang === "si" && s.langActive]}
+            onPress={async () => {
+              try {
+                await api("/me/language", {
+                  method: "PATCH",
+                  body: JSON.stringify({ language: "si" }),
+                });
+                setLang("si");
+              } catch (e: any) {
+                setError(e.message);
+              }
+            }}
+          >
+            <Text style={[s.langText, lang === "si" && s.langActiveText]}>
+              සිංහල
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={s.eyebrow}>
+          WELCOME BACK
+          {profile?.name ? `, ${profile.name.split(" ")[0].toUpperCase()}` : ""}
+        </Text>
+        <Text style={s.headline}>{t.greeting}</Text>
+        <Text style={s.intro}>{t.intro}</Text>
+      </View>
+      <ScrollView
+        contentContainerStyle={s.body}
+        showsVerticalScrollIndicator={false}
+      >
+        <TouchableOpacity
+          style={s.hero}
+          activeOpacity={0.86}
+          onPress={() => nav("/smart-scan")}
+        >
+          <View style={s.heroIcon}>
+            <Text style={{ fontSize: 32 }}>📸</Text>
+          </View>
+          <Text style={s.heroTitle}>{t.scan}</Text>
+          <Text style={s.heroSub}>{t.scanSub}</Text>
+          <View style={s.heroAction}>
+            <Text style={s.heroActionText}>Start diagnosis →</Text>
+          </View>
+          <Text style={s.heroDecor}>❧</Text>
+        </TouchableOpacity>
+        <View style={s.sectionRow}>
+          <Text style={s.section}>{t.actions}</Text>
+          <Text style={s.caption}>QUICK ACCESS</Text>
+        </View>
+        <View style={s.grid}>
+          {[
+            {
+              name: t.saved,
+              sub: t.savedSub,
+              icon: "▤",
+              route: "/records",
+              color: "#EAF4E9",
+            },
+            {
+              name: t.expert,
+              sub: t.expertSub,
+              icon: "♧",
+              route: "/case-board",
+              color: "#EDF0FB",
+            },
+            {
+              name: t.guide,
+              sub: t.guideSub,
+              icon: "▧",
+              route: "/photo-guides",
+              color: "#FFF1DA",
+            },
+            {
+              name: "New diagnosis",
+              sub: "Check another crop",
+              icon: "✚",
+              route: "/smart-scan",
+              color: "#E8F4EE",
+            },
+          ].map((x) => (
+            <TouchableOpacity
+              key={x.name}
+              style={s.tile}
+              onPress={() => nav(x.route)}
+            >
+              <View style={[s.tileIcon, { backgroundColor: x.color }]}>
+                <Text style={s.tileIconText}>{x.icon}</Text>
+              </View>
+              <Text style={s.tileTitle}>{x.name}</Text>
+              <Text style={s.tileSub}>{x.sub}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={s.sectionRow}>
+          <Text style={s.section}>{t.recent}</Text>
+          <TouchableOpacity onPress={() => nav("/records")}>
+            <Text style={s.link}>{t.view} →</Text>
+          </TouchableOpacity>
+        </View>
+        {loading ? (
+          <ActivityIndicator color={C.green} />
+        ) : recent.length ? (
+          <TouchableOpacity
+            style={s.recent}
+            onPress={() =>
+              router.push({
+                pathname: "/live-result",
+                params: { id: String(recent[0].id) },
+              })
+            }
+          >
+            <View style={s.recentLeaf}>
+              <Text style={{ fontSize: 28 }}>🌿</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.recentCrop}>{recent[0].crop}</Text>
+              <Text style={s.recentDisease}>{recent[0].disease}</Text>
+              <Text style={s.recentDate}>
+                {new Date(recent[0].created_at).toLocaleDateString()}
+              </Text>
+            </View>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={s.empty}>
+            <Text style={s.emptyText}>{t.none}</Text>
+          </View>
+        )}
+        {!!error && <Text style={s.error}>Connection: {error}</Text>}
+        <View style={s.advisory}>
+          <Text style={s.advisoryTitle}>ⓘ Good to know</Text>
+          <Text style={s.advisoryText}>{t.disclaimer}</Text>
+        </View>
+      </ScrollView>
+      <View style={s.bottom}>
+        {[
+          { title: "Home", icon: "⌂", route: "/home" },
+          { title: "Scan", icon: "⊕", route: "/smart-scan" },
+          { title: "History", icon: "▤", route: "/records" },
+          { title: "Expert", icon: "♧", route: "/case-board" },
+        ].map((x, i) => (
+          <TouchableOpacity
+            key={x.title}
+            style={s.nav}
+            onPress={() => nav(x.route)}
+          >
+            <Text style={[s.navIcon, i === 0 && s.active]}>{x.icon}</Text>
+            <Text style={[s.navText, i === 0 && s.active]}>{x.title}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.cream },
+  header: {
+    backgroundColor: C.green,
+    paddingHorizontal: 23,
+    paddingTop: 19,
+    paddingBottom: 32,
+    borderBottomRightRadius: 28,
+    borderBottomLeftRadius: 28,
+  },
+  top: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  brand: {
+    color: "white",
+    fontSize: 21,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  role: {
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: "#BFE1C9",
+    marginTop: 5,
+    fontWeight: "800",
+  },
+  avatar: {
+    borderWidth: 1,
+    borderColor: "#8ABC9B",
+    backgroundColor: "#327751",
+    height: 41,
+    width: 41,
+    borderRadius: 21,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: { color: "white", fontWeight: "900", fontSize: 17 },
+  lang: {
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    backgroundColor: "#30714D",
+    padding: 3,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  langPill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 17 },
+  langActive: { backgroundColor: "white" },
+  langText: { fontSize: 11, color: "#E3F2E6", fontWeight: "800" },
+  langActiveText: { color: C.green },
+  eyebrow: {
+    fontSize: 10,
+    color: "#ABD5BC",
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginTop: 8,
+  },
+  headline: {
+    color: "white",
+    fontSize: 27,
+    fontWeight: "900",
+    marginTop: 5,
+    letterSpacing: -0.6,
+  },
+  intro: {
+    color: "#D4EADD",
+    lineHeight: 20,
+    marginTop: 7,
+    fontSize: 13,
+    maxWidth: 310,
+  },
+  body: { padding: 19, paddingBottom: 32 },
+  hero: {
+    backgroundColor: "#DCEFE0",
+    borderRadius: 23,
+    minHeight: 190,
+    padding: 20,
+    overflow: "hidden",
+    position: "relative",
+    borderWidth: 1,
+    borderColor: "#C4E1CB",
+  },
+  heroIcon: {
+    height: 51,
+    width: 51,
+    borderRadius: 16,
+    backgroundColor: "#FAFFFA",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroTitle: { color: C.ink, fontSize: 23, fontWeight: "900", marginTop: 13 },
+  heroSub: { color: "#58725F", fontSize: 12, marginTop: 4 },
+  heroAction: {
+    alignSelf: "flex-start",
+    backgroundColor: C.green,
+    borderRadius: 11,
+    marginTop: 17,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  heroActionText: { color: "white", fontSize: 12, fontWeight: "800" },
+  heroDecor: {
+    position: "absolute",
+    right: -12,
+    bottom: -75,
+    color: "#B6DCC0",
+    fontSize: 205,
+    zIndex: -1,
+  },
+  sectionRow: {
+    marginTop: 24,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  section: { color: C.ink, fontSize: 18, fontWeight: "900" },
+  caption: {
+    color: "#A0AFA5",
+    fontWeight: "800",
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 11,
+  },
+  tile: {
+    width: "48%",
+    backgroundColor: "white",
+    borderRadius: 18,
+    padding: 15,
+    minHeight: 142,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  tileIcon: {
+    height: 43,
+    width: 43,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tileIconText: { color: C.green, fontSize: 24, fontWeight: "800" },
+  tileTitle: { color: C.ink, fontWeight: "900", fontSize: 13, marginTop: 12 },
+  tileSub: { color: C.muted, fontSize: 11, marginTop: 4, lineHeight: 16 },
+  link: { color: C.green, fontWeight: "800", fontSize: 11 },
+  recent: {
+    backgroundColor: "white",
+    borderRadius: 17,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 12,
+    borderColor: C.border,
+    borderWidth: 1,
+  },
+  recentLeaf: {
+    width: 62,
+    height: 62,
+    backgroundColor: "#E6F3E5",
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recentCrop: { color: C.ink, fontWeight: "900", fontSize: 15 },
+  recentDisease: { color: "#536A5B", fontSize: 12, marginTop: 3 },
+  recentDate: { color: "#92A098", fontSize: 10, marginTop: 5 },
+  chevron: { color: "#8BA494", fontSize: 25 },
+  empty: {
+    backgroundColor: "white",
+    padding: 22,
+    borderColor: C.border,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  emptyText: { color: C.muted, textAlign: "center", lineHeight: 20 },
+  advisory: {
+    backgroundColor: "#F0F3E8",
+    padding: 15,
+    borderRadius: 15,
+    marginTop: 21,
+  },
+  advisoryTitle: { color: "#48673E", fontWeight: "900", fontSize: 12 },
+  advisoryText: {
+    color: "#6C7967",
+    fontSize: 11,
+    lineHeight: 18,
+    marginTop: 5,
+  },
+  error: { color: "#BC3535", marginTop: 12 },
+  bottom: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    paddingTop: 10,
+    paddingBottom: 14,
+  },
+  nav: { flex: 1, alignItems: "center" },
+  navIcon: { fontSize: 23, color: "#87998C" },
+  navText: { fontSize: 10, color: "#87998C", marginTop: 3, fontWeight: "700" },
+  active: { color: C.green },
+});
