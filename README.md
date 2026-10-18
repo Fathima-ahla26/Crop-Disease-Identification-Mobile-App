@@ -16,7 +16,7 @@ A mobile application that helps farmers and home gardeners identify possible cro
 
 * **Frontend:** React Native, Expo
 * **Backend:** Node.js, Express.js
-* **Database:** MongoDB Atlas
+* **Database:** MySQL
 * **UI/UX Design:** Figma
 * **API Testing:** Postman
 * **Version Control:** Git & GitHub
