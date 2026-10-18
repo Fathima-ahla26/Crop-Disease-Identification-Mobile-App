@@ -10,12 +10,11 @@ type Stats = {
   statuses: { status: string; count: number }[];
   generated_at: string;
 };
-const periods = [{ label: 'All time', days: 0 }, { label: '7 days', days: 7 }, { label: '30 days', days: 30 }];
 
 export default function OutbreakAnalytics() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [days, setDays] = useState(0);
+  const days = 0;
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -57,7 +56,6 @@ export default function OutbreakAnalytics() {
       <Text style={s.title}>Outbreak analytics</Text><Text style={s.sub}>All districts · Includes archived cases</Text>
     </View>
     <ScrollView contentContainerStyle={s.body} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => setRevision(v => v + 1)} />}>
-      <View style={s.filters}>{periods.map(p => <TouchableOpacity key={p.days} accessibilityRole="button" accessibilityState={{ selected: days === p.days }} style={[s.pill, days === p.days && s.selected]} onPress={() => setDays(p.days)}><Text style={[s.pillText, days === p.days && s.white]}>{p.label}</Text></TouchableOpacity>)}</View>
       {!!error && <View style={s.card}><Text style={s.error}>{error}</Text><TouchableOpacity accessibilityRole="button" style={s.tap} onPress={() => setRevision(v => v + 1)}><Text style={s.link}>Retry</Text></TouchableOpacity></View>}
       {busy && !stats && <ActivityIndicator color="#176B3A" style={s.tap} />}
       {stats && <>
